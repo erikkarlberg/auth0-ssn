@@ -1,16 +1,32 @@
 function (user, context, callback) {
   var userApiUrl = 'https://finkontoret.eu.auth0.com/api/v2/users';
-  
+
   // Check if SSN exists on user logging in, only merge if SSN is there.
   if (!user.ssn) {
 		console.log('===> SSN not found on this user');
     return callback(null, user, context);
   }
-  
+
+  console.log("===> Checking age");
+  var birth = user.ssn.slice(0,8);
+  var byear = parseInt(birth.slice(0,4));
+  var bmonth = parseInt(birth.slice(4,6)-1);
+  var bday = parseInt(birth.slice(6,8));
+
+  var birthdate = new Date(byear, bmonth, bday);
+  var turns18 = new Date(byear+18, bmonth, bday);
+
+  if(turns18 <= new Date()) {
+    console.log("===> Person is 18");
+  } else {
+    console.log("===> Come back " +turns18.toDateString());
+    return callback(new UnauthorizedError('Du måste vara över 18 för att använda Finkontoret.'));
+  }
+
   // Save SSN to a searchable field on this user object
  	user.user_metadata = user.user_metadata || {};
   user.user_metadata.ssn = user.ssn;
-  
+
   auth0.users.updateUserMetadata(user.user_id, user.user_metadata)
   	.then(() => {
     	console.log('===> User metadata updated with SSN');
@@ -19,23 +35,30 @@ function (user, context, callback) {
     .catch((err) => {
       callback(err);
     });
-  
+
   // Get existing user with the same SSN
 	var request = require("request");
 	var options = {
   	method: 'GET',
   	url: userApiUrl,
   	qs: {
-      q: 'user_metadata.ssn:"' +user.user_metadata.ssn +'"', 
+      q: 'user_metadata.ssn:"' +user.user_metadata.ssn +'"',
       search_engine: 'v3'
     },
   	headers: {authorization: 'Bearer ' +configuration.AUTH0_API_TOKEN}
 	};
 
 	request(options, function (error, response, body) {
-  	if (error) throw new Error(error);
-        
+   	console.log('===> Get existing user with SSN: ', user.user_metadata.ssn);
+
+  	if (error) {
+      console.log('===> Error getting user');
+      throw new Error(error);
+    }
+
     var data = JSON.parse(body);
+    console.log('===> Data: ', data);
+
 		if (data.length > 0) {
     	console.log(">> Got response(s)");
 
@@ -66,11 +89,11 @@ function (user, context, callback) {
         console.log(err);
         callback(err, user, context);
       });
-      
+
     }
 
-    
+
 	});
-  
+
   return callback(null, user, context);
 }
